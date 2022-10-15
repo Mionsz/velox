@@ -40,7 +40,7 @@ dnf remove -y gflags
 dnf_install autoconf automake libtool bison flex python3
 
 # install sphinx for doc gen
-pip3 install sphinx sphinx-tabs breathe sphinx_rtd_theme
+pip3 install sphinx sphinx-tabs breathe sphinx_rtd_theme six
 
 # Activate gcc9; enable errors on unset variables afterwards.
 source /opt/rh/gcc-toolset-9/enable || exit 1
