@@ -12,12 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if(VELOX_ENABLE_S3)
-  add_subdirectory(s3fs)
-endif()
-if(VELOX_ENABLE_HDFS)
-  add_subdirectory(hdfs)
-endif()
-if(VELOX_ENABLE_GCS)
-  add_subdirectory(gcs)
+# for generated headers
+
+find_package(google_cloud_cpp_storage REQUIRED)
+
+add_library(velox_gcs GCSFileSystem.cpp GCSUtil.cpp)
+target_include_directories(velox_gcs PUBLIC)
+target_link_libraries(velox_gcs ${FOLLY_WITH_DEPENDENCIES}
+                      google-cloud-cpp::storage)
+
+if(${VELOX_BUILD_TESTING})
+  add_subdirectory(tests)
+  add_subdirectory(examples)
+  # add_subdirectory(benchmark)
 endif()

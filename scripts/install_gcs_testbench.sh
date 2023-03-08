@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Copyright (c) Facebook, Inc. and its affiliates.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,12 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if(VELOX_ENABLE_S3)
-  add_subdirectory(s3fs)
-endif()
-if(VELOX_ENABLE_HDFS)
-  add_subdirectory(hdfs)
-endif()
-if(VELOX_ENABLE_GCS)
-  add_subdirectory(gcs)
-endif()
+set -e
+
+if [ "$(uname -m)" != "x86_64" ]; then
+  echo "GCS testbench won't install on non-x86 architecture"
+  exit 0
+fi
+
+if [ "$#" -ne 1 ]; then
+  version="v0.35.0"
+else
+  version=$1
+fi
+
+${PYTHON:-python3} -m pip install \
+   https://github.com/googleapis/storage-testbench/archive/refs/tags/${version}.tar.gz
