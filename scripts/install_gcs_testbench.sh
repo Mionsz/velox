@@ -21,7 +21,11 @@ if [ "$(uname -m)" != "x86_64" ]; then
 fi
 
 if [ "$#" -ne 1 ]; then
-  version="v0.35.0"
+  if [[ $(${PYTHON:-python3} --version | cut -d' ' -f2 | cut -d'.' -f2) -gt 6 ]]; then
+    version="v0.35.0"
+  else
+    version="v0.30.0"
+  fi
 else
   version=$1
 fi
