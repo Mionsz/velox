@@ -23,6 +23,7 @@
 #include <glog/logging.h>
 #include <memory>
 #include <stdexcept>
+#include <iostream>
 
 #include <aws/core/Aws.h>
 #include <aws/core/auth/AWSCredentialsProviderChain.h>
@@ -31,6 +32,7 @@
 #include <aws/core/utils/stream/PreallocatedStreamBuf.h>
 #include <aws/identity-management/auth/STSAssumeRoleCredentialsProvider.h>
 #include <aws/s3/S3Client.h>
+#include <aws/s3/model/PutObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 
@@ -58,6 +60,70 @@ class StringViewStream : Aws::Utils::Stream::PreallocatedStreamBuf,
 Aws::IOStreamFactory AwsWriteableStreamFactory(void* data, int64_t nbytes) {
   return [=]() { return Aws::New<StringViewStream>("", data, nbytes); };
 }
+
+/// Implementation of aws write file. Nothing written to the file should be
+/// read back until it is closed.
+
+class S3WriteFile : public WriteFile {
+ public:
+  S3WriteFile(const std::string& path, Aws::S3::S3Client* client);
+      : client_(client), path_(path) {
+    bucketAndKeyFromS3Path(path, bucket_, key_);
+  }
+
+  void initialize() {
+    request.SetBucket(ToAwsString(bucket_));
+    request.SetKey(ToAwsString(key_));
+    inputData = Aws::MakeShared<Aws::StringStream>("");
+  }
+
+  /// Get the object size.
+  uint64_t size() const override {
+    uint64_t fileSize = 0;
+    Aws::S3::Model::HeadObjectRequest headObj;
+    headObj.SetBucket(ToAwsString(bucket_));
+    headObj.SetKey(ToAwsString(key_));
+
+    auto object = s3Client.HeadObject(headObj);
+    if (object.IsSuccess())
+    {
+        fileSize = object.GetResultWithOwnership().GetContentLength();
+    }
+    return fileSize;
+  };
+
+  /// Flush the data.
+  void flush() override {
+    request.SetBody(inputData);
+
+    auto outcome = s3_client.PutObject(request);
+    VELOX_CHECK_AWS_OUTCOME(
+        outcome, "Failed to append the S3 object", bucket_, key_);
+  };
+
+  /// Write the data by append mode.
+  void append(std::string_view data) override {
+    if (data.size() == 0) {
+      return;
+    }
+    *inputData << data.c_str();
+  }
+
+  /// Close the object.
+  void close() override {
+  }
+
+ private:
+  Aws::S3::Model::PutObjectRequest request;
+  const std::shared_ptr<Aws::IOStream> inputData;
+  /// The configured AWS filesystem handle.
+  Aws::S3::S3Client* client_;
+  /// The AWS key name and bucket for write.
+  std::string bucket_;
+  std::string key_;
+  // AWS full s3 path .
+  const std::string path_;
+};
 
 class S3ReadFile final : public ReadFile {
  public:
@@ -405,7 +471,10 @@ std::unique_ptr<ReadFile> S3FileSystem::openFileForRead(std::string_view path) {
 
 std::unique_ptr<WriteFile> S3FileSystem::openFileForWrite(
     std::string_view path) {
-  VELOX_NYI();
+  const std::string file = s3Path(path);
+  auto s3file = std::make_unique<S3WriteFile>(file, impl_->s3Client());
+  s3file->initialize();
+  return s3file;
 }
 
 std::string S3FileSystem::name() const {
