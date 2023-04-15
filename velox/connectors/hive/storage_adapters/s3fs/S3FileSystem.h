@@ -37,31 +37,40 @@ class S3FileSystem : public FileSystem {
 
   std::unique_ptr<WriteFile> openFileForWrite(std::string_view path) override;
 
-  void remove(std::string_view path) override {
-    VELOX_UNSUPPORTED("remove for S3 not implemented");
-  }
+  void remove(std::string_view path) override;
 
   void rename(
       std::string_view path,
       std::string_view newPath,
       bool overWrite = false) override {
-    VELOX_UNSUPPORTED("rename for S3 not implemented");
+      _VELOX_THROW(                                                  \
+          ::facebook::velox::VeloxUserError,                         \
+          "S3FileSystem", \
+          "rename_unsupported",       \
+          /* isRetriable */ false,                                   \
+          "rename for S3 not implemented");
   }
 
-  bool exists(std::string_view path) override {
-    VELOX_UNSUPPORTED("exists for S3 not implemented");
-  }
+  bool exists(std::string_view path) override;
 
-  std::vector<std::string> list(std::string_view path) override {
-    VELOX_UNSUPPORTED("list for S3 not implemented");
-  }
+  std::vector<std::string> list(std::string_view path) override;
 
   void mkdir(std::string_view path) override {
-    VELOX_UNSUPPORTED("mkdir for S3 not implemented");
+      _VELOX_THROW(                                                  \
+          ::facebook::velox::VeloxUserError,                         \
+          "S3FileSystem", \
+          "mkdir_unsupported",       \
+          /* isRetriable */ false,                                   \
+          "mkdir for S3 not implemented");
   }
 
   void rmdir(std::string_view path) override {
-    VELOX_UNSUPPORTED("rmdir for S3 not implemented");
+      _VELOX_THROW(                                                  \
+          ::facebook::velox::VeloxUserError,                         \
+          "S3FileSystem", \
+          "rmdir_unsupported",       \
+          /* isRetriable */ false,                                   \
+          "rmdir for S3 not implemented");
   }
 
   std::string getLogLevelName() const;

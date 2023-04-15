@@ -35,6 +35,8 @@
 #include <aws/s3/model/PutObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
+#include <aws/s3/model/DeleteObjectRequest.h>
+#include <aws/s3/model/ListObjectsRequest.h>
 
 namespace facebook::velox {
 namespace {
@@ -66,14 +68,14 @@ Aws::IOStreamFactory AwsWriteableStreamFactory(void* data, int64_t nbytes) {
 
 class S3WriteFile : public WriteFile {
  public:
-  S3WriteFile(const std::string& path, Aws::S3::S3Client* client);
+  S3WriteFile(const std::string& path, Aws::S3::S3Client* client)
       : client_(client), path_(path) {
     bucketAndKeyFromS3Path(path, bucket_, key_);
   }
 
   void initialize() {
-    request.SetBucket(ToAwsString(bucket_));
-    request.SetKey(ToAwsString(key_));
+    request.SetBucket(awsString(bucket_));
+    request.SetKey(awsString(key_));
     inputData = Aws::MakeShared<Aws::StringStream>("");
   }
 
@@ -81,32 +83,32 @@ class S3WriteFile : public WriteFile {
   uint64_t size() const override {
     uint64_t fileSize = 0;
     Aws::S3::Model::HeadObjectRequest headObj;
-    headObj.SetBucket(ToAwsString(bucket_));
-    headObj.SetKey(ToAwsString(key_));
+    headObj.SetBucket(awsString(bucket_));
+    headObj.SetKey(awsString(key_));
 
-    auto object = s3Client.HeadObject(headObj);
+    auto object = client_->HeadObject(headObj);
     if (object.IsSuccess())
     {
         fileSize = object.GetResultWithOwnership().GetContentLength();
     }
     return fileSize;
-  };
+  }
 
   /// Flush the data.
   void flush() override {
     request.SetBody(inputData);
 
-    auto outcome = s3_client.PutObject(request);
+    auto outcome = client_->PutObject(request);
     VELOX_CHECK_AWS_OUTCOME(
         outcome, "Failed to append the S3 object", bucket_, key_);
-  };
+  }
 
   /// Write the data by append mode.
   void append(std::string_view data) override {
     if (data.size() == 0) {
       return;
     }
-    *inputData << data.c_str();
+    *inputData << awsString(std::string(data).c_str());
   }
 
   /// Close the object.
@@ -115,7 +117,7 @@ class S3WriteFile : public WriteFile {
 
  private:
   Aws::S3::Model::PutObjectRequest request;
-  const std::shared_ptr<Aws::IOStream> inputData;
+  std::shared_ptr<Aws::IOStream> inputData;
   /// The configured AWS filesystem handle.
   Aws::S3::S3Client* client_;
   /// The AWS key name and bucket for write.
@@ -475,6 +477,55 @@ std::unique_ptr<WriteFile> S3FileSystem::openFileForWrite(
   auto s3file = std::make_unique<S3WriteFile>(file, impl_->s3Client());
   s3file->initialize();
   return s3file;
+}
+
+bool S3FileSystem::exists(std::string_view path) {
+  const std::string file = s3Path(path);
+  std::string bucket;
+  std::string key;
+  Aws::S3::Model::HeadObjectRequest request;
+  bucketAndKeyFromS3Path(file, bucket, key);
+  request.SetBucket(awsString(bucket));
+  request.SetKey(awsString(key));
+
+  const auto response = impl_->s3Client()->HeadObject(request);
+  return response.IsSuccess();
+}
+
+void S3FileSystem::remove(std::string_view path) {
+  const std::string file = s3Path(path);
+  std::string bucket;
+  std::string key;
+  Aws::S3::Model::DeleteObjectRequest request;
+  bucketAndKeyFromS3Path(file, bucket, key);
+
+  request.SetBucket(awsString(bucket));
+  request.SetKey(awsString(key));
+
+  auto outcome = impl_->s3Client()->DeleteObject(request);
+  VELOX_CHECK_AWS_OUTCOME(
+    outcome, "Failed to remove S3 object", bucket, key);
+}
+
+std::vector<std::string> S3FileSystem::list(std::string_view path) {
+  const std::string file = s3Path(path);
+  std::string bucket;
+  std::string key;
+  Aws::S3::Model::ListObjectsRequest request;
+  std::vector<std::string> result;
+  bucketAndKeyFromS3Path(file, bucket, key);
+
+  request.SetBucket(awsString(bucket));
+  auto outcome = impl_->s3Client()->ListObjects(request);
+  VELOX_CHECK_AWS_OUTCOME(
+  outcome, "Failed to ListObjects for S3 path", bucket, key);
+
+  Aws::Vector<Aws::S3::Model::Object> objects =
+          outcome.GetResult().GetContents();
+  for (Aws::S3::Model::Object &object: objects) {
+      result.push_back(object.GetKey());
+  }
+  return result;
 }
 
 std::string S3FileSystem::name() const {
